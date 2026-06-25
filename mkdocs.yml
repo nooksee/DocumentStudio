@@ -43,6 +43,7 @@ nav:
           - help/ffmpeg.md
   - Using TagStudio:
       - libraries.md
+      - documentstudio-sidecars.md
       - entries.md
       - preview-support.md
       - search.md

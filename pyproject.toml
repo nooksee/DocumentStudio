@@ -59,6 +59,9 @@ ruff = ["ruff==0.15.17"]
 [project.gui-scripts]
 tagstudio = "tagstudio.main:main"
 
+[project.scripts]
+documentstudio-sidecars = "tagstudio.core.sidecars.cli:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/tagstudio"]
 
