@@ -15,6 +15,7 @@ from wcmatch import pathlib
 from tagstudio.core.library.alchemy.library import Library
 from tagstudio.core.library.alchemy.models import Entry
 from tagstudio.core.library.ignore import PATH_GLOB_FLAGS, Ignore, ignore_to_glob
+from tagstudio.core.sidecars.paths import is_managed_sidecar
 from tagstudio.core.utils.silent_subprocess import silent_run  # pyright: ignore
 from tagstudio.core.utils.types import unwrap
 
@@ -141,6 +142,10 @@ class RefreshTracker:
             if f.is_dir():
                 continue
 
+            # Skip DocumentStudio's own sidecars that shadow an existing source file.
+            if is_managed_sidecar(library_dir / f):
+                continue
+
             dir_file_count += 1
             self.library.included_files.add(f)
 
@@ -182,6 +187,10 @@ class RefreshTracker:
 
                 # Ignore if the file is a directory
                 if f.is_dir():
+                    continue
+
+                # Skip DocumentStudio's own sidecars that shadow an existing source file.
+                if is_managed_sidecar(Path(str(f))):
                     continue
 
                 dir_file_count += 1

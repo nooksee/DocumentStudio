@@ -23,11 +23,14 @@ def test_entry_payload_includes_tags_and_fields(library: Library) -> None:
     entry = unwrap(library.get_entry_full(1))
     payload = entry_to_sidecar_payload(entry)
 
-    assert payload["schema"] == "documentstudio.sidecar.v1"
+    assert payload["schema"] == "documentstudio.sidecar.v2"
     assert payload["source"]["entry_id"] == 1
     assert payload["source"]["path"] == "foo.txt"
     assert "foo" in payload["keywords"]
     assert payload["fields"]["text"][0]["name"] == "Title"
+    # Tag identity is durable: names, not numeric database ids.
+    assert all("id" not in tag for tag in payload["tags"])
+    assert all("parents" in tag for tag in payload["tags"])
 
 
 def test_export_json_sidecars_dry_run_does_not_write(library: Library) -> None:

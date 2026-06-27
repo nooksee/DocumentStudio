@@ -8,5 +8,11 @@
 
 # Ignored Filetypes
 *.aae
-*.json
-*.xmp
+
+# NOTE: DocumentStudio does NOT blanket-ignore *.json or *.xmp here, unlike
+# upstream TagStudio. A document library may legitimately contain real .json or
+# .xmp files as payload. DocumentStudio's own sidecars (e.g. report.pdf.json
+# next to report.pdf) are skipped at scan time by a sibling-conditional rule
+# (see tagstudio.core.sidecars.paths.is_managed_sidecar), so standalone
+# .json/.xmp documents stay catalogued. Add "*.json"/"*.xmp" back here if you
+# prefer the upstream blanket behavior.

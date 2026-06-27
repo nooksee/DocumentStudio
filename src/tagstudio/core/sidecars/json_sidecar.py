@@ -17,8 +17,9 @@ from sqlalchemy.orm.exc import DetachedInstanceError
 from tagstudio.core.constants import VERSION
 from tagstudio.core.library.alchemy.library import Library
 from tagstudio.core.library.alchemy.models import Entry, Tag
+from tagstudio.core.sidecars.paths import sidecar_path_for
 
-SCHEMA_NAME = "documentstudio.sidecar.v1"
+SCHEMA_NAME = "documentstudio.sidecar.v2"
 
 
 @dataclass(frozen=True)
@@ -43,11 +44,6 @@ class ExportSummary:
     errors: int = 0
 
 
-def sidecar_path_for(source_path: Path) -> Path:
-    """Return the durable same-folder JSON sidecar path for a source file."""
-    return Path(f"{source_path}.json")
-
-
 def serialize_datetime(value: Any) -> str | None:
     """Serialize supported date-like values without guessing missing information."""
     if value is None:
@@ -58,23 +54,27 @@ def serialize_datetime(value: Any) -> str | None:
 
 
 def tag_payload(tag: Tag) -> dict[str, Any]:
-    """Return a stable, portable representation of a DocumentStudio tag."""
+    """Return a stable, portable representation of a DocumentStudio tag.
+
+    Tag identity is durable: parents are recorded by name, not by the local
+    autoincrement database id, so the tag survives a database rebuild or a move
+    to another library. The numeric id is deliberately omitted.
+    """
     try:
         aliases = sorted(alias.name for alias in tag.aliases)
     except DetachedInstanceError:
         aliases = []
 
     try:
-        parent_ids = sorted(parent.id for parent in tag.parent_tags)
+        parents = sorted(parent.name for parent in tag.parent_tags)
     except DetachedInstanceError:
-        parent_ids = []
+        parents = []
 
     return {
-        "id": tag.id,
         "name": tag.name,
         "shorthand": tag.shorthand,
+        "parents": parents,
         "aliases": aliases,
-        "parent_ids": parent_ids,
         "is_category": tag.is_category,
         "is_hidden": tag.is_hidden,
     }
