@@ -88,6 +88,33 @@ XMP carries the portable subset. The mapping is the single source of truth in
 
 Anything without a mapping stays JSON-only by design.
 
+## Embedded metadata (into the source document)
+
+Beyond sidecars, DocumentStudio can write metadata *into* the document itself
+where the format safely allows it. This is the riskier class — it modifies the
+source — so it is **dry-run by default** and only replaces a source after the
+rewritten file is verified to reopen.
+
+```bash
+# Dry-run: show what would be embedded into .docx sources
+documentstudio-sidecars /path/to/library --embed
+
+# Write metadata into the source .docx files
+documentstudio-sidecars /path/to/library --embed --write
+```
+
+Support by file type:
+
+- **`.docx`** — writable **in-house, dependency-free**: stdlib edits
+  `docProps/core.xml` (title, keywords from tags, creator from Author/Artist,
+  description). Existing properties we do not map are preserved.
+- **`.pdf`** — writable via ExifTool (wiring planned).
+- **`.odt` / `.epub`** — same ZIP-container approach, not yet built.
+- **legacy `.doc`** — needs OLE-stream writing (not built); **plain text** has no
+  embedded slot (sidecar only).
+
+The sidecar remains the authority; embedded metadata is a convenience surface.
+
 ## Current guarantees
 
 - dry-run is the default; writes require `--write`
