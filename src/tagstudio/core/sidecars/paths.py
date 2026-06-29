@@ -58,3 +58,29 @@ def is_managed_sidecar(path: Path) -> bool:
     if source == path:
         return False
     return source.is_file()
+
+
+def is_media_suffix(suffix: str) -> bool:
+    """Return True for image/video/audio types — digiKam's domain.
+
+    DocumentStudio may *catalog* media, but per the digiKam boundary it must never
+    *write* a sidecar or embedded metadata for it (digiKam writes a far richer
+    XMP truth and owns those files). The type definitions are reused from
+    TagStudio's own catalog, imported lazily to keep this module's load light for
+    the file scanner.
+    """
+    from tagstudio.core.media_types import MediaCategories
+
+    ext = suffix.lower()
+    if not ext.startswith("."):
+        ext = f".{ext}"
+    media_values = {
+        "image",
+        "image_animated",
+        "image_raw",
+        "image_vector",
+        "video",
+        "audio",
+        "audio_midi",
+    }
+    return any(t.value in media_values for t in MediaCategories.get_types(ext, mime_fallback=True))

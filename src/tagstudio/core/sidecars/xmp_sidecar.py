@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tagstudio.core.library.alchemy.library import Library
-from tagstudio.core.sidecars.paths import sidecar_path_for
+from tagstudio.core.sidecars.paths import is_media_suffix, sidecar_path_for
 from tagstudio.core.sidecars.xmp_mapping import LIST_PROPERTIES, entry_to_xmp_properties
 
 EXIFTOOL = shutil.which("exiftool")
@@ -40,6 +40,7 @@ class XmpExportSummary:
     """Quantitative receipt for an XMP sidecar export pass."""
 
     entries_seen: int = 0
+    media_skipped: int = 0
     source_missing: int = 0
     sidecars_existing: int = 0
     sidecars_would_write: int = 0
@@ -72,25 +73,58 @@ def build_exiftool_args(properties: dict[str, list[str]]) -> list[str]:
     return args
 
 
+def build_exiftool_merge_args(properties: dict[str, list[str]]) -> list[str]:
+    """Build args that update only our fields in an EXISTING sidecar.
+
+    List properties are cleared then re-added so our values replace only ours;
+    single properties are set. Foreign fields (digiKam's faces, GPS, hierarchy,
+    labels) are never named, so they survive untouched.
+    """
+    args: list[str] = []
+    for prop in sorted(properties):
+        values = properties[prop]
+        if not values:
+            continue
+        if prop in LIST_PROPERTIES:
+            args.append(f"-{prop}=")
+            args.extend(f"-{prop}+={value}" for value in values)
+        else:
+            args.append(f"-{prop}={values[-1]}")
+    return args
+
+
 def write_xmp_sidecar(
     sidecar_path: Path, properties: dict[str, list[str]], *, overwrite: bool
 ) -> bool:
     """Write one XMP sidecar via ExifTool.
 
-    Returns True when a file was written, False when there was nothing to write
-    or an existing sidecar was preserved. ExifTool writes through its own temp
-    file and derives the XMP format from the ``.xmp`` extension, so we write
-    directly to the sidecar path.
+    A new sidecar is created from scratch. An existing sidecar is preserved by
+    default; with ``overwrite`` it is **merged** — only our fields change and
+    every foreign field (e.g. digiKam's faces, GPS, hierarchical tags) is kept.
     """
     if not properties:
         return False
     if EXIFTOOL is None:
         raise RuntimeError("exiftool not found on PATH")
+
     if sidecar_path.exists():
         if not overwrite:
             return False
-        # ExifTool's -o refuses to write over an existing file.
-        sidecar_path.unlink()
+        result = subprocess.run(
+            [
+                EXIFTOOL,
+                "-q",
+                "-overwrite_original",
+                *build_exiftool_merge_args(properties),
+                str(sidecar_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or "exiftool failed to merge sidecar")
+        return True
 
     result = subprocess.run(
         [EXIFTOOL, "-q", "-o", str(sidecar_path), *build_exiftool_args(properties)],
@@ -121,6 +155,10 @@ def export_xmp_sidecars(
         if options.limit is not None and summary.entries_seen >= options.limit:
             break
         summary.entries_seen += 1
+        # digiKam boundary: catalog media, but never write a sidecar for it.
+        if is_media_suffix(entry.suffix):
+            summary.media_skipped += 1
+            continue
 
         source_path = entry.path
         if not source_path.exists():

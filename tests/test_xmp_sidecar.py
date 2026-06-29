@@ -14,6 +14,7 @@ from tagstudio.core.library.alchemy.fields import DatetimeField, TextField
 from tagstudio.core.library.alchemy.library import Library
 from tagstudio.core.library.alchemy.models import Entry, Tag
 from tagstudio.core.sidecars.import_sidecar import ImportOptions
+from tagstudio.core.sidecars.json_sidecar import ExportOptions, export_json_sidecars
 from tagstudio.core.sidecars.xmp_import import import_xmp_sidecars
 from tagstudio.core.sidecars.xmp_mapping import (
     entry_to_xmp_properties,
@@ -302,3 +303,67 @@ def test_import_xmp_dry_run_does_not_mutate(tmp_path: Path) -> None:
     assert len(rebuilt.tags) == tags_before
     entry = unwrap(rebuilt.get_entry_full(1))
     assert list(entry.tags) == []
+
+
+# --- digiKam boundary safety (Rules 2 and 3) --------------------------------
+
+
+def test_export_skips_media_types(tmp_path: Path) -> None:
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"\xff\xd8\xff fake jpeg")
+    lib = _open_library(tmp_path / "lib")
+    _entry_with(lib, source=image, tags=["vacation"], text=[("Title", "Beach")])
+
+    xmp = export_xmp_sidecars(lib, XmpExportOptions(write=True))
+    assert xmp.media_skipped == 1
+    assert xmp.sidecars_written == 0
+    assert not (tmp_path / "photo.jpg.xmp").exists()
+
+    js = export_json_sidecars(lib, ExportOptions(write=True))
+    assert js.media_skipped == 1
+    assert js.sidecars_written == 0
+    assert not (tmp_path / "photo.jpg.json").exists()
+
+
+@needs_exiftool
+def test_xmp_overwrite_merges_preserving_foreign_fields(tmp_path: Path) -> None:
+    source = tmp_path / "report.pdf"
+    source.write_bytes(b"%PDF-1.4 test\n")
+    sidecar = tmp_path / "report.pdf.xmp"
+    # Simulate another tool's richer sidecar: a field we never map, plus an old title.
+    subprocess.run(
+        [
+            shutil.which("exiftool"),
+            "-q",
+            "-o",
+            str(sidecar),
+            "-XMP-dc:Rights=Family Archive",
+            "-XMP-dc:Title=Old Title",
+        ],
+        check=True,
+    )
+
+    lib = _open_library(tmp_path / "lib")
+    _entry_with(lib, source=source, tags=["finance", "q3"], text=[("Title", "New Title")])
+
+    summary = export_xmp_sidecars(lib, XmpExportOptions(write=True, overwrite=True))
+    assert summary.sidecars_written == 1
+
+    out = subprocess.run(
+        [
+            shutil.which("exiftool"),
+            "-j",
+            "-XMP-dc:Title",
+            "-XMP-dc:Rights",
+            "-XMP-dc:Subject",
+            str(sidecar),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    data = json.loads(out.stdout)[0]
+    assert data["Title"] == "New Title"  # our field updated
+    assert data["Rights"] == "Family Archive"  # foreign field preserved by merge
+    subjects = data["Subject"] if isinstance(data["Subject"], list) else [data["Subject"]]
+    assert sorted(subjects) == ["finance", "q3"]
