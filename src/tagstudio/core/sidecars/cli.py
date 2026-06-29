@@ -14,12 +14,13 @@ from pathlib import Path
 from tagstudio.core.library.alchemy.library import Library
 from tagstudio.core.sidecars.import_sidecar import ImportOptions, import_json_sidecars
 from tagstudio.core.sidecars.json_sidecar import ExportOptions, export_json_sidecars
+from tagstudio.core.sidecars.xmp_sidecar import XmpExportOptions, export_xmp_sidecars
 
 
 def parse_args() -> argparse.Namespace:
     """Parse sidecar maintenance arguments."""
     parser = argparse.ArgumentParser(
-        description="Export or import DocumentStudio JSON sidecars."
+        description="Export or import DocumentStudio JSON/XMP sidecars."
     )
     parser.add_argument("library_dir", type=Path, help="DocumentStudio library root directory")
     parser.add_argument(
@@ -27,6 +28,11 @@ def parse_args() -> argparse.Namespace:
         dest="do_import",
         action="store_true",
         help="Import sidecars into the library instead of exporting them",
+    )
+    parser.add_argument(
+        "--xmp",
+        action="store_true",
+        help="Export portable XMP sidecars (via ExifTool) instead of JSON",
     )
     parser.add_argument(
         "--write",
@@ -58,15 +64,25 @@ def main() -> int:
             ImportOptions(apply=args.write, limit=args.limit),
         )
         direction = "import"
+        sidecar_format = "json"
+    elif args.xmp:
+        summary = export_xmp_sidecars(
+            library,
+            XmpExportOptions(write=args.write, overwrite=args.overwrite, limit=args.limit),
+        )
+        direction = "export"
+        sidecar_format = "xmp"
     else:
         summary = export_json_sidecars(
             library,
             ExportOptions(write=args.write, overwrite=args.overwrite, limit=args.limit),
         )
         direction = "export"
+        sidecar_format = "json"
 
     payload = asdict(summary)
     payload["direction"] = direction
+    payload["format"] = sidecar_format
     payload["mode"] = "write" if args.write else "dry-run"
     payload["library_dir"] = args.library_dir.as_posix()
 

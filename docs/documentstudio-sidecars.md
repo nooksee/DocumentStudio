@@ -3,73 +3,98 @@
 
 # DocumentStudio Sidecars
 
-DocumentStudio keeps the application library useful, but durable document metadata should also be exportable into app-neutral sidecar files.
+DocumentStudio keeps the application library useful, but durable document
+metadata should also live in app-neutral sidecar files. This makes the SQLite
+library **replaceable local state** rather than the only home for your metadata.
 
-The first sidecar surface is the `documentstudio-sidecars` command. It exports JSON sidecars from the current DocumentStudio library state.
+Two sidecar formats sit beside each source document:
+
+- **JSON** (`<source>.json`) — the rich, repo-authority format. Everything.
+- **XMP** (`<source>.xmp`) — the portable interoperability export that digiKam,
+  Adobe apps, and ExifTool can read. A standard subset.
+
+Everything is exposed through the `documentstudio-sidecars` command, and every
+run is **dry-run by default** and prints a **machine-readable summary** so it can
+be driven and verified by automation, not just by hand.
 
 ## Naming
 
-JSON sidecars use the source filename plus `.json`.
+Sidecars use the full source filename plus the format suffix. No
+`.documentstudio` segment is used, so discovery stays plain and app-neutral.
 
-Examples:
+| Source | JSON sidecar | XMP sidecar |
+|--------|--------------|-------------|
+| `report.pdf` | `report.pdf.json` | `report.pdf.xmp` |
+| `lesson-plan.docx` | `lesson-plan.docx.json` | `lesson-plan.docx.xmp` |
 
-- `report.pdf`
-- `report.pdf.json`
-- `lesson-plan.docx`
-- `lesson-plan.docx.json`
-
-No `.documentstudio` filename segment is used.
+A `.json`/`.xmp` file is treated as a managed sidecar only when a sibling source
+file exists, so a standalone `data.json` document is still catalogued normally.
 
 ## Command
 
 ```bash
-documentstudio-sidecars /path/to/library --limit 10 --json
-```
+# Dry-run JSON export (default) with a machine-readable summary
+documentstudio-sidecars /path/to/library --json
 
-The command defaults to dry-run mode.
-
-Use `--write` only when sidecar writes are intended:
-
-```bash
+# Write JSON sidecars
 documentstudio-sidecars /path/to/library --write
+
+# Write portable XMP sidecars (via ExifTool)
+documentstudio-sidecars /path/to/library --xmp --write
+
+# Import sidecars back into the library (the round-trip)
+documentstudio-sidecars /path/to/library --import --write
 ```
 
-Existing sidecars are preserved by default. Use `--overwrite` only when replacement is intentional:
+Flags: `--write` applies changes (writes files on export, mutates the library on
+import); `--overwrite` replaces existing sidecars; `--limit N` bounds the scan;
+`--json` prints a JSON summary instead of plain text.
 
-```bash
-documentstudio-sidecars /path/to/library --write --overwrite
-```
+The JSON summary is the point of integration for tooling — e.g.
+`{"direction": "export", "format": "xmp", "sidecars_would_write": 3, "errors": 0}`.
 
-## Current Guarantees
+## Round-trip
 
-- dry-run is the default
-- write mode requires `--write`
+The library can be rebuilt from JSON sidecars alone: **export → discard the
+SQLite library → re-scan the files → import**. Tags are keyed by durable
+identity (name plus parent names), not the local database id, so a sidecar
+written by one library re-applies cleanly to a freshly rebuilt one. Import is
+idempotent — re-applying a sidecar adds nothing.
+
+## XMP field mapping
+
+XMP carries the portable subset. The mapping is the single source of truth in
+`tagstudio.core.sidecars.xmp_mapping`:
+
+| DocumentStudio | XMP property | Cardinality |
+|----------------|--------------|-------------|
+| tags (visible) | `dc:subject` | list |
+| Title | `dc:title` | single |
+| Description | `dc:description` | single |
+| Author, Artist | `dc:creator` | list |
+| Source | `dc:source` | single |
+| Publisher | `dc:publisher` | single |
+| URL | `dc:identifier` | single |
+| Rating | `xmp:Rating` (validated −1…5) | single |
+| Date, Date Created | `xmp:CreateDate` | single |
+| Date Modified | `xmp:ModifyDate` | single |
+
+Anything without a mapping stays JSON-only by design.
+
+## Current guarantees
+
+- dry-run is the default; writes require `--write`
 - existing sidecars are preserved unless `--overwrite` is explicit
-- source document bytes are not modified
-- embedded metadata is not modified
-- GUI tag mutation hooks are not patched yet
-
-## Exported Data
-
-The JSON sidecar includes:
-
-- schema name
-- generator tool and version
-- source entry ID, path, filename, suffix, and dates
-- visible keyword list
-- tag details
-- text fields
-- datetime fields
-
-JSON sidecars are the rich repo-authority format. XMP sidecars remain the planned interoperability format for portable fields such as keywords, title, description, rating, creator, and reliable dates.
+- source document bytes are never modified
+- embedded document metadata is not modified (XMP is written to a sidecar only)
+- the library indexer skips managed sidecars, sibling-conditionally
+- GUI tag-mutation hooks are not patched yet
 
 ## Verification
 
-Initial service verification on 2026-06-25:
-
-- fixture dry-run entries seen: `3`
-- fixture sidecars written: `0`
-- sidecar tests passed: `5`
+- new XMP tests (mapping + ExifTool write→read-back round-trip): `10`
+- combined sidecar + library regression: `67` passing
 - lint findings: `0`
+- XMP export uses ExifTool; it is skipped gracefully where ExifTool is absent
 
 Protocol deviations: `0`.
