@@ -15,6 +15,7 @@ from tagstudio.core.library.alchemy.library import Library
 from tagstudio.core.sidecars.docx_metadata import DocxEmbedOptions, embed_docx_metadata
 from tagstudio.core.sidecars.import_sidecar import ImportOptions, import_json_sidecars
 from tagstudio.core.sidecars.json_sidecar import ExportOptions, export_json_sidecars
+from tagstudio.core.sidecars.pdf_metadata import PdfEmbedOptions, embed_pdf_metadata
 from tagstudio.core.sidecars.xmp_import import import_xmp_sidecars
 from tagstudio.core.sidecars.xmp_sidecar import XmpExportOptions, export_xmp_sidecars
 
@@ -39,7 +40,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--embed",
         action="store_true",
-        help="Write metadata INTO source documents (currently .docx); modifies sources",
+        help="Write metadata INTO source documents (.docx, .pdf); modifies sources",
     )
     parser.add_argument(
         "--include-media",
@@ -71,13 +72,23 @@ def main() -> int:
         return 2
 
     if args.embed:
-        summary = embed_docx_metadata(
-            library,
-            DocxEmbedOptions(apply=args.write, limit=args.limit),
-        )
-        direction = "embed"
-        sidecar_format = "docx"
-    elif args.do_import and args.xmp:
+        docx = embed_docx_metadata(library, DocxEmbedOptions(apply=args.write, limit=args.limit))
+        pdf = embed_pdf_metadata(library, PdfEmbedOptions(apply=args.write, limit=args.limit))
+        embed_payload = {
+            "direction": "embed",
+            "mode": "write" if args.write else "dry-run",
+            "library_dir": args.library_dir.as_posix(),
+            "docx": asdict(docx),
+            "pdf": asdict(pdf),
+        }
+        if args.json:
+            sys.stdout.write(json.dumps(embed_payload, indent=2, sort_keys=True) + "\n")
+        else:
+            for key in sorted(embed_payload):
+                sys.stdout.write(f"{key}: {embed_payload[key]}\n")
+        return 0 if (docx.errors + pdf.errors) == 0 else 1
+
+    if args.do_import and args.xmp:
         summary = import_xmp_sidecars(
             library,
             ImportOptions(apply=args.write, limit=args.limit),

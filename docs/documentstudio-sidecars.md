@@ -108,7 +108,8 @@ Support by file type:
 - **`.docx`** — writable **in-house, dependency-free**: stdlib edits
   `docProps/core.xml` (title, keywords from tags, creator from Author/Artist,
   description). Existing properties we do not map are preserved.
-- **`.pdf`** — writable via ExifTool (wiring planned).
+- **`.pdf`** — writable via ExifTool: the XMP packet **and** the PDF Info
+  dictionary (Title/Author/Subject/Keywords, what viewers show). Pilot-verified.
 - **`.odt` / `.epub`** — same ZIP-container approach, not yet built.
 - **legacy `.doc`** — needs OLE-stream writing (not built); **plain text** has no
   embedded slot (sidecar only).
@@ -120,8 +121,8 @@ and on `--apply` it backs up every `.docx` it will write to a reversible
 directory first:
 
 ```bash
-.venv/bin/python contrib/docx_embed_runner.py /path/to/library          # dry-run
-.venv/bin/python contrib/docx_embed_runner.py /path/to/library --apply  # write (backed up)
+.venv/bin/python contrib/embed_runner.py /path/to/library          # dry-run
+.venv/bin/python contrib/embed_runner.py /path/to/library --apply  # write (backed up)
 ```
 
 ## The digiKam boundary
