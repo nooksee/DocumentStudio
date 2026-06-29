@@ -13,9 +13,12 @@ import pytest
 from tagstudio.core.library.alchemy.fields import DatetimeField, TextField
 from tagstudio.core.library.alchemy.library import Library
 from tagstudio.core.library.alchemy.models import Entry, Tag
+from tagstudio.core.sidecars.import_sidecar import ImportOptions
+from tagstudio.core.sidecars.xmp_import import import_xmp_sidecars
 from tagstudio.core.sidecars.xmp_mapping import (
     entry_to_xmp_properties,
     is_valid_rating,
+    xmp_json_to_payload,
 )
 from tagstudio.core.sidecars.xmp_sidecar import (
     XmpExportOptions,
@@ -201,3 +204,101 @@ def test_export_preserves_existing_without_overwrite(tmp_path: Path) -> None:
     second = export_xmp_sidecars(lib, XmpExportOptions(write=True))
     assert second.sidecars_written == 0
     assert second.sidecars_skipped_existing == 1
+
+
+# --- import (XMP -> library, round-trip) ------------------------------------
+
+
+def test_xmp_json_to_payload_maps_back() -> None:
+    payload = xmp_json_to_payload(
+        {"Subject": ["finance", "q3"], "Title": "Quarterly Report", "Creator": "Kevin", "Rating": 4}
+    )
+    assert payload["keywords"] == ["finance", "q3"]
+    assert {tag["name"] for tag in payload["tags"]} == {"finance", "q3"}
+    text = {(field["name"], field["value"]) for field in payload["fields"]["text"]}
+    assert ("Title", "Quarterly Report") in text
+    assert ("Author", "Kevin") in text  # creator collapses to Author
+    assert ("Rating", "4") in text
+
+
+@needs_exiftool
+def test_xmp_round_trip(tmp_path: Path) -> None:
+    source = tmp_path / "report.pdf"
+    source.write_bytes(b"%PDF-1.4 test\n")
+
+    src_lib = _open_library(tmp_path / "source")
+    _entry_with(
+        src_lib,
+        source=source,
+        tags=["finance", "q3"],
+        text=[
+            ("Title", "Quarterly Report"),
+            ("Description", "Q3 figures"),
+            ("Author", "Kevin"),
+            ("Rating", "4"),
+        ],
+    )
+    assert export_xmp_sidecars(src_lib, XmpExportOptions(write=True)).sidecars_written == 1
+
+    rebuilt = _open_library(tmp_path / "rebuilt")
+    folder = unwrap(rebuilt.folder)
+    assert rebuilt.add_entries([Entry(id=1, folder=folder, path=source, fields=[])])
+
+    summary = import_xmp_sidecars(rebuilt, ImportOptions(apply=True))
+    assert summary.sidecars_found == 1
+    assert summary.errors == 0
+
+    entry = unwrap(rebuilt.get_entry_full(1))
+    assert sorted(tag.name for tag in entry.tags) == ["finance", "q3"]
+    text = {(field.name, field.value) for field in entry.text_fields}
+    assert {"Title", "Description", "Author", "Rating"} <= {name for name, _ in text}
+    assert ("Title", "Quarterly Report") in text
+    assert ("Description", "Q3 figures") in text
+    assert ("Author", "Kevin") in text
+    assert ("Rating", "4") in text
+
+
+@needs_exiftool
+def test_import_xmp_is_idempotent(tmp_path: Path) -> None:
+    source = tmp_path / "report.pdf"
+    source.write_bytes(b"%PDF-1.4 test\n")
+
+    src_lib = _open_library(tmp_path / "source")
+    _entry_with(src_lib, source=source, tags=["finance"], text=[("Title", "R")])
+    assert export_xmp_sidecars(src_lib, XmpExportOptions(write=True)).sidecars_written == 1
+
+    rebuilt = _open_library(tmp_path / "rebuilt")
+    folder = unwrap(rebuilt.folder)
+    assert rebuilt.add_entries([Entry(id=1, folder=folder, path=source, fields=[])])
+
+    first = import_xmp_sidecars(rebuilt, ImportOptions(apply=True))
+    assert first.tags_created == 1
+    assert first.tag_links_added == 1
+    assert first.fields_added >= 1
+
+    second = import_xmp_sidecars(rebuilt, ImportOptions(apply=True))
+    assert second.tags_created == 0
+    assert second.tag_links_added == 0
+    assert second.fields_added == 0
+
+
+@needs_exiftool
+def test_import_xmp_dry_run_does_not_mutate(tmp_path: Path) -> None:
+    source = tmp_path / "report.pdf"
+    source.write_bytes(b"%PDF-1.4 test\n")
+
+    src_lib = _open_library(tmp_path / "source")
+    _entry_with(src_lib, source=source, tags=["finance"], text=[("Title", "R")])
+    assert export_xmp_sidecars(src_lib, XmpExportOptions(write=True)).sidecars_written == 1
+
+    rebuilt = _open_library(tmp_path / "rebuilt")
+    folder = unwrap(rebuilt.folder)
+    assert rebuilt.add_entries([Entry(id=1, folder=folder, path=source, fields=[])])
+    tags_before = len(rebuilt.tags)
+
+    summary = import_xmp_sidecars(rebuilt, ImportOptions(apply=False))
+    assert summary.sidecars_found == 1
+    assert summary.tags_created == 0
+    assert len(rebuilt.tags) == tags_before
+    entry = unwrap(rebuilt.get_entry_full(1))
+    assert list(entry.tags) == []

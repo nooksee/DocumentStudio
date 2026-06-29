@@ -14,6 +14,7 @@ from pathlib import Path
 from tagstudio.core.library.alchemy.library import Library
 from tagstudio.core.sidecars.import_sidecar import ImportOptions, import_json_sidecars
 from tagstudio.core.sidecars.json_sidecar import ExportOptions, export_json_sidecars
+from tagstudio.core.sidecars.xmp_import import import_xmp_sidecars
 from tagstudio.core.sidecars.xmp_sidecar import XmpExportOptions, export_xmp_sidecars
 
 
@@ -58,7 +59,14 @@ def main() -> int:
         sys.stderr.write(f"error: {status.message or 'could not open library'}\n")
         return 2
 
-    if args.do_import:
+    if args.do_import and args.xmp:
+        summary = import_xmp_sidecars(
+            library,
+            ImportOptions(apply=args.write, limit=args.limit),
+        )
+        direction = "import"
+        sidecar_format = "xmp"
+    elif args.do_import:
         summary = import_json_sidecars(
             library,
             ImportOptions(apply=args.write, limit=args.limit),

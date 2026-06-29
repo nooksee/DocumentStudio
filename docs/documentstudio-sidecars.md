@@ -42,8 +42,11 @@ documentstudio-sidecars /path/to/library --write
 # Write portable XMP sidecars (via ExifTool)
 documentstudio-sidecars /path/to/library --xmp --write
 
-# Import sidecars back into the library (the round-trip)
+# Import JSON sidecars back into the library (the round-trip)
 documentstudio-sidecars /path/to/library --import --write
+
+# Import XMP sidecars back into the library
+documentstudio-sidecars /path/to/library --import --xmp --write
 ```
 
 Flags: `--write` applies changes (writes files on export, mutates the library on
@@ -60,6 +63,10 @@ SQLite library → re-scan the files → import**. Tags are keyed by durable
 identity (name plus parent names), not the local database id, so a sidecar
 written by one library re-applies cleanly to a freshly rebuilt one. Import is
 idempotent — re-applying a sidecar adds nothing.
+
+XMP sidecars round-trip too (`--import --xmp`), carrying the portable subset
+back into the library — flat keywords plus the mapped fields. Tag hierarchy and
+anything outside the table below stay JSON-only.
 
 ## XMP field mapping
 
@@ -92,9 +99,9 @@ Anything without a mapping stays JSON-only by design.
 
 ## Verification
 
-- new XMP tests (mapping + ExifTool write→read-back round-trip): `10`
-- combined sidecar + library regression: `67` passing
+- XMP tests (mapping, export, and a full export→fresh-library→import round-trip): `14`
+- combined sidecar + library regression: `71` passing
 - lint findings: `0`
-- XMP export uses ExifTool; it is skipped gracefully where ExifTool is absent
+- XMP export/import use ExifTool; they are skipped gracefully where ExifTool is absent
 
 Protocol deviations: `0`.

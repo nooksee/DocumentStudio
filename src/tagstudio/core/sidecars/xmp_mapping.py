@@ -29,7 +29,7 @@ Anything without a mapping here stays JSON-only by design.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from tagstudio.core.library.alchemy.models import Entry
@@ -118,3 +118,78 @@ def entry_to_xmp_properties(entry: Entry) -> dict[str, list[str]]:
             properties[prop] = [values[-1]]
 
     return properties
+
+
+# --- XMP -> DocumentStudio (import) -----------------------------------------
+#
+# ExifTool's ``-j`` output strips the namespace, so we key off the bare property
+# name. This is the inverse of the export map above. Note one lossy asymmetry:
+# ``Artist`` and ``Author`` both export to ``dc:creator``, so on import every
+# creator comes back as an ``Author`` field.
+
+XMP_IMPORT_SUBJECT_KEY = "Subject"
+
+XMP_IMPORT_TEXT_FIELDS: dict[str, str] = {
+    "Title": "Title",
+    "Description": "Description",
+    "Creator": "Author",
+    "Source": "Source",
+    "Publisher": "Publisher",
+    "Identifier": "URL",
+    "Rating": "Rating",
+}
+
+XMP_IMPORT_DATETIME_FIELDS: dict[str, str] = {
+    "CreateDate": "Date Created",
+    "ModifyDate": "Date Modified",
+}
+
+# Explicit ExifTool read args so a read pulls only the properties we map.
+XMP_READ_ARGS: tuple[str, ...] = (
+    "-XMP-dc:Title",
+    "-XMP-dc:Description",
+    "-XMP-dc:Subject",
+    "-XMP-dc:Creator",
+    "-XMP-dc:Source",
+    "-XMP-dc:Publisher",
+    "-XMP-dc:Identifier",
+    "-XMP-xmp:Rating",
+    "-XMP-xmp:CreateDate",
+    "-XMP-xmp:ModifyDate",
+)
+
+
+def _as_value_list(value: Any) -> list[str]:
+    """Normalize an ExifTool JSON value to a list of non-empty strings."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    text = str(value).strip()
+    return [text] if text else []
+
+
+def xmp_json_to_payload(data: dict[str, Any]) -> dict[str, Any]:
+    """Convert one ExifTool ``-j`` record into a JSON-sidecar-style payload.
+
+    The result has the same shape the JSON importer consumes, so XMP import can
+    reuse the shared apply engine. XMP keywords are flat, so tags come back
+    without hierarchy.
+    """
+    keywords = _as_value_list(data.get(XMP_IMPORT_SUBJECT_KEY))
+
+    text_fields: list[dict[str, Any]] = []
+    for key, field_name in XMP_IMPORT_TEXT_FIELDS.items():
+        for value in _as_value_list(data.get(key)):
+            text_fields.append({"name": field_name, "value": value, "is_multiline": False})
+
+    datetime_fields: list[dict[str, Any]] = []
+    for key, field_name in XMP_IMPORT_DATETIME_FIELDS.items():
+        for value in _as_value_list(data.get(key)):
+            datetime_fields.append({"name": field_name, "value": value})
+
+    return {
+        "keywords": keywords,
+        "tags": [{"name": keyword, "parents": []} for keyword in keywords],
+        "fields": {"text": text_fields, "datetime": datetime_fields},
+    }
