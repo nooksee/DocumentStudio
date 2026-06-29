@@ -326,6 +326,20 @@ def test_export_skips_media_types(tmp_path: Path) -> None:
 
 
 @needs_exiftool
+def test_include_media_switch_writes_media(tmp_path: Path) -> None:
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"\xff\xd8\xff fake jpeg")
+    lib = _open_library(tmp_path / "lib")
+    _entry_with(lib, source=image, tags=["vacation"], text=[("Title", "Beach")])
+
+    # The all-media switch lets DocumentStudio write media sidecars (the future path).
+    summary = export_xmp_sidecars(lib, XmpExportOptions(write=True, include_media=True))
+    assert summary.media_skipped == 0
+    assert summary.sidecars_written == 1
+    assert (tmp_path / "photo.jpg.xmp").is_file()
+
+
+@needs_exiftool
 def test_xmp_overwrite_merges_preserving_foreign_fields(tmp_path: Path) -> None:
     source = tmp_path / "report.pdf"
     source.write_bytes(b"%PDF-1.4 test\n")

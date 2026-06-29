@@ -42,6 +42,11 @@ def parse_args() -> argparse.Namespace:
         help="Write metadata INTO source documents (currently .docx); modifies sources",
     )
     parser.add_argument(
+        "--include-media",
+        action="store_true",
+        help="Opt in to writing sidecars for media too (off by default; the digiKam boundary)",
+    )
+    parser.add_argument(
         "--write",
         action="store_true",
         help="Apply changes (write sidecar files on export, mutate the library on import)",
@@ -89,14 +94,24 @@ def main() -> int:
     elif args.xmp:
         summary = export_xmp_sidecars(
             library,
-            XmpExportOptions(write=args.write, overwrite=args.overwrite, limit=args.limit),
+            XmpExportOptions(
+                write=args.write,
+                overwrite=args.overwrite,
+                limit=args.limit,
+                include_media=args.include_media,
+            ),
         )
         direction = "export"
         sidecar_format = "xmp"
     else:
         summary = export_json_sidecars(
             library,
-            ExportOptions(write=args.write, overwrite=args.overwrite, limit=args.limit),
+            ExportOptions(
+                write=args.write,
+                overwrite=args.overwrite,
+                limit=args.limit,
+                include_media=args.include_media,
+            ),
         )
         direction = "export"
         sidecar_format = "json"

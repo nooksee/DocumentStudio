@@ -115,6 +115,24 @@ Support by file type:
 
 The sidecar remains the authority; embedded metadata is a convenience surface.
 
+For embedding at scale safely, use the production runner — dry-run by default,
+and on `--apply` it backs up every `.docx` it will write to a reversible
+directory first:
+
+```bash
+.venv/bin/python contrib/docx_embed_runner.py /path/to/library          # dry-run
+.venv/bin/python contrib/docx_embed_runner.py /path/to/library --apply  # write (backed up)
+```
+
+## The digiKam boundary
+
+DocumentStudio is forked from a media tagger, but in this engine **digiKam owns
+media**. So the sidecar writers **skip image/video/audio** — DocumentStudio
+catalogs media but never writes a sidecar onto a file digiKam owns, and an XMP
+overwrite *merges* (preserving any foreign fields). The default is documents-only;
+`--include-media` opts in to writing media sidecars too. See
+`Decisions/digikam-documentstudio-boundary.md` in the control plane.
+
 ## Current guarantees
 
 - dry-run is the default; writes require `--write`

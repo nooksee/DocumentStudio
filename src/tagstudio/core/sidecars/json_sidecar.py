@@ -29,6 +29,9 @@ class ExportOptions:
     write: bool = False
     overwrite: bool = False
     limit: int | None = None
+    # digiKam boundary switch: default off keeps media out of our writes.
+    # Flip to True to let DocumentStudio write media sidecars too (the "all-media" path).
+    include_media: bool = False
 
 
 @dataclass
@@ -173,8 +176,9 @@ def export_json_sidecars(
             break
 
         summary.entries_seen += 1
-        # digiKam boundary: catalog media, but never write a sidecar for it.
-        if is_media_suffix(entry.suffix):
+        # digiKam boundary: catalog media, but never write a sidecar for it
+        # unless the operator explicitly opts in (the all-media switch).
+        if not options.include_media and is_media_suffix(entry.suffix):
             summary.media_skipped += 1
             continue
         source_path = entry.path
